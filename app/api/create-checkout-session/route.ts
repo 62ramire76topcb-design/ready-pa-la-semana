@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
-
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { email, name, planLabel, total, orderId, successUrl, cancelUrl } = body;
-
-    if (!process.env.STRIPE_SECRET_KEY) {
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) {
       return NextResponse.json(
-        { error: "Stripe no esta configurado. Agrega STRIPE_SECRET_KEY en las variables de entorno de Vercel." },
+        {
+          error:
+            "Stripe no esta configurado. Agrega STRIPE_SECRET_KEY en las variables de entorno de Vercel.",
+        },
         { status: 500 }
       );
     }
+
+    const stripe = new Stripe(secret);
+    const body = await req.json();
+    const { email, name, planLabel, total, orderId, successUrl, cancelUrl } = body;
 
     const base = process.env.NEXT_PUBLIC_BASE_URL || "https://ready-pa-la-semana.vercel.app";
 
