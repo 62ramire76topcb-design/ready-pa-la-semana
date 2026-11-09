@@ -24,10 +24,19 @@ export interface Meal {
   price: number;
 }
 
+export type OrderStatus =
+  | "pending"
+  | "paid"
+  | "preparing"
+  | "shipped"
+  | "delivered"
+  | "cancelled";
+
 export interface Order {
   id?: string;
+  orderNumber: string;
   createdAt: number;
-  status: "pending" | "paid" | "preparing" | "shipped" | "delivered" | "cancelled";
+  status: OrderStatus;
   customer: {
     name: string;
     email: string;
@@ -48,4 +57,5 @@ export interface Order {
     total: number;
   };
   stripeSessionId?: string;
+  statusHistory?: { status: OrderStatus; at: number }[];
 }
