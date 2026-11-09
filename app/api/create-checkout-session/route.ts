@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
     const stripe = new Stripe(secret);
     const body = await req.json();
-    const { email, name, planLabel, total, orderId, successUrl, cancelUrl } = body;
+    const { email, name, planLabel, total, orderId, orderNumber, successUrl, cancelUrl } = body;
 
     const base = process.env.NEXT_PUBLIC_BASE_URL || "https://ready-pa-la-semana.vercel.app";
 
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
             currency: "usd",
             product_data: {
               name: `Ready pa' la semana - ${planLabel}`,
-              description: `Plan de comidas preparadas - ${name || "Cliente"}`,
+              description: `Orden ${orderNumber || ""} - ${name || "Cliente"}`,
             },
             unit_amount: Math.round(Number(total) * 100),
           },
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
       cancel_url: cancelUrl || `${base}/`,
       metadata: {
         orderId: orderId || "",
+        orderNumber: orderNumber || "",
         customerName: (name || "").substring(0, 200),
         email: (email || "").substring(0, 100),
       },
