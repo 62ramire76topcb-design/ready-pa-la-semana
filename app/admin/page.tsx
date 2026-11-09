@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { getOrders, updateOrderStatus } from "@/lib/orders";
-import { Order } from "@/lib/types";
+import { Order, OrderStatus } from "@/lib/types";
 import { DAYS_OPTIONS, PREFERENCE_OPTIONS, MEALS } from "@/lib/meals";
 import clsx from "clsx";
 
-const STATUS_LABELS: Record<Order["status"], string> = {
+const STATUS_LABELS: Record<OrderStatus, string> = {
   pending: "Pendiente",
   paid: "Pagado",
   preparing: "Preparando",
@@ -17,7 +17,7 @@ const STATUS_LABELS: Record<Order["status"], string> = {
   cancelled: "Cancelado",
 };
 
-const STATUS_COLORS: Record<Order["status"], string> = {
+const STATUS_COLORS: Record<OrderStatus, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   paid: "bg-blue-100 text-blue-800",
   preparing: "bg-purple-100 text-purple-800",
@@ -25,6 +25,15 @@ const STATUS_COLORS: Record<Order["status"], string> = {
   delivered: "bg-green-100 text-green-800",
   cancelled: "bg-red-100 text-red-800",
 };
+
+const ALL_STATUSES: OrderStatus[] = [
+  "pending",
+  "paid",
+  "preparing",
+  "shipped",
+  "delivered",
+  "cancelled",
+];
 
 export default function AdminPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -34,6 +43,8 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<OrderStatus | "all">("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -70,12 +81,40 @@ export default function AdminPage() {
     setOrders([]);
   };
 
-  const changeStatus = async (orderId: string, status: Order["status"]) => {
+  const changeStatus = async (orderId: string, status: OrderStatus) => {
     await updateOrderStatus(orderId, status);
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     );
   };
+
+  const filtered = useMemo(() => {
+    let list = orders;
+    if (filterStatus !== "all") {
+      list = list.filter((o) => o.status === filterStatus);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(
+        (o) =>
+          o.orderNumber?.toLowerCase().includes(q) ||
+          o.customer.name.toLowerCase().includes(q) ||
+          o.customer.email.toLowerCase().includes(q) ||
+          o.customer.phone.includes(q) ||
+          o.customer.city.toLowerCase().includes(q) ||
+          o.customer.zip.includes(q)
+      );
+    }
+    return list;
+  }, [orders, filterStatus, search]);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: orders.length };
+    ALL_STATUSES.forEach((s) => {
+      c[s] = orders.filter((o) => o.status === s).length;
+    });
+    return c;
+  }, [orders]);
 
   if (loading) {
     return (
@@ -96,8 +135,8 @@ export default function AdminPage() {
             <div className="w-12 h-12 bg-brand-600 text-white rounded-xl flex items-center justify-center font-bold text-xl mx-auto mb-3">
               R
             </div>
-            <h1 className="text-2xl font-bold">Admin \u00b7 Ready pa&apos; la semana</h1>
-            <p className="text-gray-500 text-sm mt-1">Inicia sesi\u00f3n para ver los pedidos</p>
+            <h1 className="text-2xl font-bold">Admin · Ready pa&apos; la semana</h1>
+            <p className="text-gray-500 text-sm mt-1">Inicia sesion para ver los pedidos</p>
           </div>
 
           {authError && (
@@ -115,7 +154,7 @@ export default function AdminPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1.5">Contrase\u00f1a</label>
+            <label className="block text-sm font-medium mb-1.5">Contrasena</label>
             <input
               type="password"
               value={password}
@@ -130,9 +169,6 @@ export default function AdminPage() {
           >
             Entrar
           </button>
-          <p className="text-center text-xs text-gray-400">
-            Usa una cuenta de Firebase Auth del proyecto agromaxgt-app
-          </p>
         </form>
       </div>
     );
@@ -169,22 +205,58 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold">Pedidos ({orders.length})</h2>
-          <a href="/" className="text-sm text-brand-600 hover:underline">
-            \u2190 Ir al sitio
-          </a>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <h2 className="text-xl font-bold">
+            Pedidos ({filtered.length}
+            {filterStatus !== "all" || search ? ` de ${orders.length}` : ""})
+          </h2>
+          <input
+            type="text"
+            placeholder="Buscar por orden, nombre, email, telefono..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="px-4 py-2.5 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none text-sm w-full sm:w-80"
+          />
+        </div>
+
+        {/* Filtros de estado */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          <button
+            onClick={() => setFilterStatus("all")}
+            className={clsx(
+              "text-xs px-3 py-1.5 rounded-full border transition-colors",
+              filterStatus === "all"
+                ? "bg-brand-600 text-white border-brand-600"
+                : "border-gray-200 hover:bg-gray-50"
+            )}
+          >
+            Todos ({counts.all})
+          </button>
+          {ALL_STATUSES.map((s) => (
+            <button
+              key={s}
+              onClick={() => setFilterStatus(s)}
+              className={clsx(
+                "text-xs px-3 py-1.5 rounded-full border transition-colors",
+                filterStatus === s
+                  ? "bg-brand-600 text-white border-brand-600"
+                  : "border-gray-200 hover:bg-gray-50"
+              )}
+            >
+              {STATUS_LABELS[s]} ({counts[s] || 0})
+            </button>
+          ))}
         </div>
 
         {ordersLoading ? (
           <div className="text-center py-20 text-gray-400">Cargando pedidos...</div>
-        ) : orders.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
-            A\u00fan no hay pedidos. Cuando alguien complete el flujo aparecer\u00e1n aqu\u00ed.
+            No hay pedidos con estos filtros.
           </div>
         ) : (
           <div className="space-y-4">
-            {orders.map((order) => {
+            {filtered.map((order) => {
               const daysLabel =
                 DAYS_OPTIONS.find((d) => d.id === order.plan.days)?.label || order.plan.days;
               const prefLabel =
@@ -201,9 +273,12 @@ export default function AdminPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                     <div>
+                      <div className="font-mono text-sm text-brand-700 font-semibold">
+                        {order.orderNumber || order.id}
+                      </div>
                       <div className="font-semibold text-lg">{order.customer.name}</div>
                       <div className="text-sm text-gray-500">
-                        {order.customer.email} \u00b7 {order.customer.phone}
+                        {order.customer.email} · {order.customer.phone}
                       </div>
                     </div>
                     <span
@@ -218,31 +293,27 @@ export default function AdminPage() {
 
                   <div className="grid sm:grid-cols-2 gap-3 text-sm mb-4">
                     <div>
-                      <span className="text-gray-400">Direcci\u00f3n:</span>{" "}
+                      <span className="text-gray-400">Direccion:</span>{" "}
                       <span className="font-medium">
-                        {order.customer.address}, {order.customer.city} {order.customer.zip}
+                        {order.customer.address}, {order.customer.city}{" "}
+                        {order.customer.zip}
                       </span>
                     </div>
                     <div>
                       <span className="text-gray-400">Plan:</span>{" "}
                       <span className="font-medium">
-                        {daysLabel} \u00b7 {prefLabel} \u00b7 {order.plan.people} pers.
+                        {daysLabel} · {prefLabel} · {order.plan.people} pers.
                       </span>
                     </div>
                     <div className="sm:col-span-2">
                       <span className="text-gray-400">Comidas:</span>{" "}
-                      <span className="font-medium">{mealNames || "\u2014"}</span>
+                      <span className="font-medium">{mealNames || "—"}</span>
                     </div>
                     <div>
                       <span className="text-gray-400">Total:</span>{" "}
                       <span className="font-bold text-brand-700">
                         ${order.pricing.total.toFixed(2)}
                       </span>
-                      {order.pricing.discount > 0 && (
-                        <span className="text-xs text-gray-400 ml-1">
-                          (ahorro ${order.pricing.discount.toFixed(2)})
-                        </span>
-                      )}
                     </div>
                     <div>
                       <span className="text-gray-400">Fecha:</span>{" "}
