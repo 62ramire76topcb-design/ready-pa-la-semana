@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,10 +10,12 @@ export async function POST(req: NextRequest) {
 
     if (!process.env.STRIPE_SECRET_KEY) {
       return NextResponse.json(
-        { error: "Stripe no est\u00e1 configurado. Agrega STRIPE_SECRET_KEY en las variables de entorno." },
+        { error: "Stripe no esta configurado. Agrega STRIPE_SECRET_KEY en las variables de entorno de Vercel." },
         { status: 500 }
       );
     }
+
+    const base = process.env.NEXT_PUBLIC_BASE_URL || "https://ready-pa-la-semana.vercel.app";
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -36,10 +36,8 @@ export async function POST(req: NextRequest) {
       ],
       success_url:
         successUrl ||
-        `${process.env.NEXT_PUBLIC_BASE_URL || "https://ready-pa-la-semana.vercel.app"}/success?session_id={CHECKOUT_SESSION_ID}&order_id=${orderId}`,
-      cancel_url:
-        cancelUrl ||
-        `${process.env.NEXT_PUBLIC_BASE_URL || "https://ready-pa-la-semana.vercel.app"}/`,
+        `${base}/success?session_id={CHECKOUT_SESSION_ID}&order_id=${orderId || ""}`,
+      cancel_url: cancelUrl || `${base}/`,
       metadata: {
         orderId: orderId || "",
         customerName: (name || "").substring(0, 200),
@@ -50,7 +48,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: session.url, sessionId: session.id });
   } catch (error: unknown) {
     console.error("Stripe error:", error);
-    const message = error instanceof Error ? error.message : "Error creando sesi\u00f3n de pago";
+    const message = error instanceof Error ? error.message : "Error creando sesion de pago";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
