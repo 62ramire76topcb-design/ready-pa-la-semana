@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 
-const LABELS = ["D\u00edas", "Tipo", "Personas", "Comidas", "Direcci\u00f3n", "Datos", "Pago"];
+const LABELS = ["Dias", "Tipo", "Personas", "Comidas", "Dir.", "Datos", "Pago"];
 
 export default function ProgressBar({ step, total }: { step: number; total: number }) {
   const progress = (step / total) * 100;
@@ -19,10 +19,7 @@ export default function ProgressBar({ step, total }: { step: number; total: numb
       </div>
       <div className="flex justify-between text-[10px] text-gray-400 mt-1.5">
         {LABELS.map((label, i) => (
-          <span
-            key={label}
-            className={step >= i + 1 ? "text-brand-700 font-medium" : ""}
-          >
+          <span key={label} className={step >= i + 1 ? "text-brand-700 font-medium" : ""}>
             {label}
           </span>
         ))}

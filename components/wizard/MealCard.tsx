@@ -24,7 +24,7 @@ export default function MealCard({ meal, selected, onToggle }: Props) {
         <span className="text-3xl">{meal.emoji}</span>
         {selected && (
           <div className="w-5 h-5 bg-brand-600 text-white rounded-full flex items-center justify-center text-xs shrink-0">
-            \u2713
+            ✓
           </div>
         )}
       </div>
@@ -32,7 +32,7 @@ export default function MealCard({ meal, selected, onToggle }: Props) {
       <p className="text-xs text-gray-500 mt-1 line-clamp-2">{meal.description}</p>
       <div className="flex gap-2 mt-2 text-xs text-gray-400">
         <span>{meal.calories} cal</span>
-        <span>\u00b7</span>
+        <span>·</span>
         <span>{meal.protein}g prot</span>
       </div>
     </button>

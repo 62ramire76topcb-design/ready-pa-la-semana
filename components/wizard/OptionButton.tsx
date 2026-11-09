@@ -28,7 +28,7 @@ export default function OptionButton({ selected, onClick, label, desc, emoji }: 
       </div>
       {selected && (
         <div className="w-6 h-6 bg-brand-600 text-white rounded-full flex items-center justify-center text-sm shrink-0">
-          \u2713
+          ✓
         </div>
       )}
     </button>
