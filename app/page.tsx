@@ -70,8 +70,10 @@ export default function Home() {
     if (step === 2) return !!data.preference;
     if (step === 3) return !!data.people;
     if (step === 4) return data.selectedMeals.length >= 1;
-    if (step === 5) return data.zip.length >= 5 && data.address.trim().length > 3 && data.city.trim().length > 1;
-    if (step === 6) return data.name.trim().length > 1 && data.email.includes("@") && data.phone.length >= 7;
+    if (step === 5)
+      return data.zip.length >= 5 && data.address.trim().length > 3 && data.city.trim().length > 1;
+    if (step === 6)
+      return data.name.trim().length > 1 && data.email.includes("@") && data.phone.length >= 7;
     return true;
   };
 
@@ -149,11 +151,11 @@ export default function Home() {
       });
 
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Error al crear sesi\u00f3n de pago");
+      if (!res.ok) throw new Error(json.error || "Error al crear sesion de pago");
       if (json.url) {
         window.location.href = json.url;
       } else {
-        throw new Error("No se recibi\u00f3 URL de Stripe");
+        throw new Error("No se recibio URL de Stripe");
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error inesperado";
@@ -183,12 +185,14 @@ export default function Home() {
             </span>
           </div>
           <ProgressBar step={step} total={TOTAL_STEPS} />
-          <div className="text-sm text-gray-500">Paso {step} de {TOTAL_STEPS}</div>
+          <div className="text-sm text-gray-500">
+            Paso {step} de {TOTAL_STEPS}
+          </div>
         </div>
       </header>
 
       <div className="bg-brand-100 text-brand-900 text-center py-2.5 text-sm font-medium">
-        \u{1F381} 50% de descuento en tu primera caja + Desayuno gratis por 1 a\u00f1o
+        50% de descuento en tu primera caja + Desayuno gratis por 1 ano
       </div>
 
       <main className="flex-1 flex items-center justify-center px-4 py-8 md:py-12">
@@ -198,7 +202,7 @@ export default function Home() {
               {step === 1 && (
                 <StepWrapper key="s1">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    \u00bfCu\u00e1ntos d\u00edas a la semana quieres comidas?
+                    Cuantos dias a la semana quieres comidas?
                   </h1>
                   <p className="text-gray-500 mb-8">Puedes cambiarlo cuando quieras.</p>
                   <div className="space-y-3">
@@ -206,7 +210,9 @@ export default function Home() {
                       <OptionButton
                         key={opt.id}
                         selected={data.days === opt.id}
-                        onClick={() => setData((d) => ({ ...d, days: opt.id, selectedMeals: [] }))}
+                        onClick={() =>
+                          setData((d) => ({ ...d, days: opt.id, selectedMeals: [] }))
+                        }
                         label={opt.label}
                         desc={opt.desc}
                       />
@@ -218,16 +224,20 @@ export default function Home() {
               {step === 2 && (
                 <StepWrapper key="s2">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    \u00bfQu\u00e9 tipo de comidas prefieres?
+                    Que tipo de comidas prefieres?
                   </h1>
-                  <p className="text-gray-500 mb-8">Elige la que m\u00e1s se ajuste a tus metas.</p>
+                  <p className="text-gray-500 mb-8">Elige la que mas se ajuste a tus metas.</p>
                   <div className="space-y-3">
                     {PREFERENCE_OPTIONS.map((opt) => (
                       <OptionButton
                         key={opt.id}
                         selected={data.preference === opt.id}
                         onClick={() =>
-                          setData((d) => ({ ...d, preference: opt.id, selectedMeals: [] }))
+                          setData((d) => ({
+                            ...d,
+                            preference: opt.id,
+                            selectedMeals: [],
+                          }))
                         }
                         label={opt.label}
                         desc={opt.desc}
@@ -241,9 +251,9 @@ export default function Home() {
               {step === 3 && (
                 <StepWrapper key="s3">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    \u00bfPara cu\u00e1ntas personas?
+                    Para cuantas personas?
                   </h1>
-                  <p className="text-gray-500 mb-8">As\u00ed ajustamos las porciones.</p>
+                  <p className="text-gray-500 mb-8">Asi ajustamos las porciones.</p>
                   <div className="space-y-3">
                     {PEOPLE_OPTIONS.map((opt) => (
                       <OptionButton
@@ -287,12 +297,12 @@ export default function Home() {
               {step === 5 && (
                 <StepWrapper key="s5">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    \u00bfD\u00f3nde te enviamos las comidas?
+                    Donde te enviamos las comidas?
                   </h1>
-                  <p className="text-gray-500 mb-8">Necesitamos tu direcci\u00f3n de entrega.</p>
+                  <p className="text-gray-500 mb-8">Necesitamos tu direccion de entrega.</p>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1.5">C\u00f3digo postal</label>
+                      <label className="block text-sm font-medium mb-1.5">Codigo postal</label>
                       <input
                         type="text"
                         inputMode="numeric"
@@ -309,10 +319,10 @@ export default function Home() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1.5">Direcci\u00f3n</label>
+                      <label className="block text-sm font-medium mb-1.5">Direccion</label>
                       <input
                         type="text"
-                        placeholder="Calle, n\u00famero, apto..."
+                        placeholder="Calle, numero, apto..."
                         value={data.address}
                         onChange={(e) => setData((d) => ({ ...d, address: e.target.value }))}
                         className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none"
@@ -337,7 +347,9 @@ export default function Home() {
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
                     Tus datos de contacto
                   </h1>
-                  <p className="text-gray-500 mb-8">Para confirmar el pedido y enviarte actualizaciones.</p>
+                  <p className="text-gray-500 mb-8">
+                    Para confirmar el pedido y enviarte actualizaciones.
+                  </p>
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium mb-1.5">Nombre completo</label>
@@ -350,7 +362,7 @@ export default function Home() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1.5">Correo electr\u00f3nico</label>
+                      <label className="block text-sm font-medium mb-1.5">Correo electronico</label>
                       <input
                         type="email"
                         placeholder="tucorreo@ejemplo.com"
@@ -360,7 +372,7 @@ export default function Home() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1.5">Tel\u00e9fono</label>
+                      <label className="block text-sm font-medium mb-1.5">Telefono</label>
                       <input
                         type="tel"
                         placeholder="706-555-1234"
@@ -376,7 +388,7 @@ export default function Home() {
               {step === 7 && (
                 <StepWrapper key="s7">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    \u00a1Tu plan est\u00e1 listo!
+                    Tu plan esta listo!
                   </h1>
                   <p className="text-gray-500 mb-6">Revisa y procede al pago seguro con Stripe.</p>
 
@@ -384,8 +396,14 @@ export default function Home() {
                     <Row label="Frecuencia" value={selectedDays?.label} />
                     <Row label="Tipo" value={selectedPref?.label} />
                     <Row label="Personas" value={selectedPeople?.label} />
-                    <Row label="Comidas" value={`${data.selectedMeals.length} seleccionadas`} />
-                    <Row label="Direcci\u00f3n" value={`${data.address}, ${data.city} ${data.zip}`} />
+                    <Row
+                      label="Comidas"
+                      value={`${data.selectedMeals.length} seleccionadas`}
+                    />
+                    <Row
+                      label="Direccion"
+                      value={`${data.address}, ${data.city} ${data.zip}`}
+                    />
                     <Row label="Contacto" value={data.name} />
                     <div className="border-t border-brand-200 pt-3 flex justify-between items-center">
                       <span className="text-gray-500">Primera caja</span>
@@ -401,7 +419,9 @@ export default function Home() {
                   </div>
 
                   {error && (
-                    <div className="bg-red-50 text-red-700 text-sm p-3 rounded-xl mb-4">{error}</div>
+                    <div className="bg-red-50 text-red-700 text-sm p-3 rounded-xl mb-4">
+                      {error}
+                    </div>
                   )}
 
                   <button
@@ -414,10 +434,10 @@ export default function Home() {
                         : "bg-brand-600 text-white hover:bg-brand-700"
                     )}
                   >
-                    {loading ? "Procesando..." : "Pagar con Stripe \u2192"}
+                    {loading ? "Procesando..." : "Pagar con Stripe"}
                   </button>
                   <p className="text-center text-sm text-gray-400 mt-3">
-                    Pago seguro \u00b7 Puedes pausar o cancelar cuando quieras
+                    Pago seguro. Puedes pausar o cancelar cuando quieras
                   </p>
                   <button
                     onClick={reset}
@@ -436,7 +456,7 @@ export default function Home() {
                     onClick={back}
                     className="px-6 py-3.5 rounded-xl border-2 border-gray-200 font-medium hover:bg-gray-50"
                   >
-                    Atr\u00e1s
+                    Atras
                   </button>
                 )}
                 <button
@@ -458,16 +478,16 @@ export default function Home() {
           <div className="order-1 md:order-2 hidden md:block sticky top-28">
             <div className="relative aspect-[4/5] rounded-3xl overflow-hidden bg-gradient-to-br from-brand-50 via-teal-50 to-orange-50 shadow-xl">
               <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
-                <div className="text-7xl mb-6">\u{1F37D}\uFE0F</div>
+                <div className="text-7xl mb-6">🍽️</div>
                 <h3 className="text-2xl font-semibold text-gray-800 mb-3">
                   Comidas listas en 2 minutos
                 </h3>
                 <p className="text-gray-500 text-sm max-w-xs leading-relaxed">
-                  Preparadas por chefs \u00b7 Aprobadas por nutricionistas \u00b7 Frescas
+                  Preparadas por chefs · Aprobadas por nutricionistas · Frescas
                 </p>
                 {selectedDays && (
                   <div className="mt-8 bg-white/80 backdrop-blur rounded-2xl px-5 py-3 shadow-sm">
-                    <div className="text-sm text-gray-500">Tu selecci\u00f3n</div>
+                    <div className="text-sm text-gray-500">Tu seleccion</div>
                     <div className="font-semibold text-brand-800">{selectedDays.label}</div>
                     {selectedPref && (
                       <div className="text-sm text-brand-600 mt-0.5">{selectedPref.label}</div>
@@ -488,7 +508,7 @@ export default function Home() {
       </main>
 
       <footer className="border-t border-gray-100 py-6 text-center text-sm text-gray-400">
-        \u00a9 2026 Ready pa&apos; la semana \u00b7{" "}
+        2026 Ready pa&apos; la semana ·{" "}
         <a href="/admin" className="hover:text-brand-600 underline">
           Admin
         </a>
@@ -514,7 +534,7 @@ function Row({ label, value }: { label: string; value?: string }) {
   return (
     <div className="flex justify-between text-sm">
       <span className="text-gray-500">{label}</span>
-      <span className="font-medium text-right max-w-[60%] truncate">{value || "\u2014"}</span>
+      <span className="font-medium text-right max-w-[60%] truncate">{value || "—"}</span>
     </div>
   );
 }
