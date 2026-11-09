@@ -12,6 +12,7 @@ import {
   PEOPLE_OPTIONS,
   PRICES,
   MEALS,
+  generateOrderNumber,
 } from "@/lib/meals";
 import { PlanData, Step } from "@/lib/types";
 import { createOrder } from "@/lib/orders";
@@ -96,9 +97,7 @@ export default function Home() {
   const toggleMeal = (id: string) => {
     setData((d) => {
       const exists = d.selectedMeals.includes(id);
-      if (exists) {
-        return { ...d, selectedMeals: d.selectedMeals.filter((m) => m !== id) };
-      }
+      if (exists) return { ...d, selectedMeals: d.selectedMeals.filter((m) => m !== id) };
       if (d.selectedMeals.length >= maxMeals) return d;
       return { ...d, selectedMeals: [...d.selectedMeals, id] };
     });
@@ -114,7 +113,9 @@ export default function Home() {
     setLoading(true);
     setError("");
     try {
+      const orderNumber = generateOrderNumber();
       const orderId = await createOrder({
+        orderNumber,
         createdAt: Date.now(),
         status: "pending",
         customer: {
@@ -138,6 +139,12 @@ export default function Home() {
         },
       });
 
+      // Guardar para la pagina de exito
+      sessionStorage.setItem(
+        "last_order",
+        JSON.stringify({ orderId, orderNumber, data, total: discountPrice })
+      );
+
       const res = await fetch("/api/create-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -147,6 +154,7 @@ export default function Home() {
           planLabel: selectedDays?.label || "Plan",
           total: discountPrice,
           orderId,
+          orderNumber,
         }),
       });
 
@@ -276,7 +284,7 @@ export default function Home() {
                   <p className="text-gray-500 mb-2">
                     Selecciona hasta {maxMeals} comidas ({data.selectedMeals.length}/{maxMeals})
                   </p>
-                  <div className="grid grid-cols-2 gap-3 mt-6">
+                  <div className="grid grid-cols-2 gap-3 mt-6 max-h-[420px] overflow-y-auto pr-1">
                     {filteredMeals.map((meal) => (
                       <MealCard
                         key={meal.id}
@@ -286,11 +294,6 @@ export default function Home() {
                       />
                     ))}
                   </div>
-                  {filteredMeals.length === 0 && (
-                    <p className="text-gray-400 text-center py-8">
-                      No hay comidas para esta preferencia. Vuelve y elige otra.
-                    </p>
-                  )}
                 </StepWrapper>
               )}
 
@@ -396,14 +399,8 @@ export default function Home() {
                     <Row label="Frecuencia" value={selectedDays?.label} />
                     <Row label="Tipo" value={selectedPref?.label} />
                     <Row label="Personas" value={selectedPeople?.label} />
-                    <Row
-                      label="Comidas"
-                      value={`${data.selectedMeals.length} seleccionadas`}
-                    />
-                    <Row
-                      label="Direccion"
-                      value={`${data.address}, ${data.city} ${data.zip}`}
-                    />
+                    <Row label="Comidas" value={`${data.selectedMeals.length} seleccionadas`} />
+                    <Row label="Direccion" value={`${data.address}, ${data.city} ${data.zip}`} />
                     <Row label="Contacto" value={data.name} />
                     <div className="border-t border-brand-200 pt-3 flex justify-between items-center">
                       <span className="text-gray-500">Primera caja</span>
@@ -419,9 +416,7 @@ export default function Home() {
                   </div>
 
                   {error && (
-                    <div className="bg-red-50 text-red-700 text-sm p-3 rounded-xl mb-4">
-                      {error}
-                    </div>
+                    <div className="bg-red-50 text-red-700 text-sm p-3 rounded-xl mb-4">{error}</div>
                   )}
 
                   <button
@@ -509,8 +504,8 @@ export default function Home() {
 
       <footer className="border-t border-gray-100 py-6 text-center text-sm text-gray-400">
         2026 Ready pa&apos; la semana ·{" "}
-        <a href="/admin" className="hover:text-brand-600 underline">
-          Admin
+        <a href="/seguimiento" className="hover:text-brand-600 underline">
+          Seguir mi pedido
         </a>
       </footer>
     </div>
