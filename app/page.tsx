@@ -1,93 +1,83 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
-
-type Step = 1 | 2 | 3 | 4 | 5;
-
-interface PlanData {
-  days: string | null;
-  preference: string | null;
-  people: string | null;
-  zip: string;
-  email: string;
-}
+import ProgressBar from "@/components/wizard/ProgressBar";
+import OptionButton from "@/components/wizard/OptionButton";
+import MealCard from "@/components/wizard/MealCard";
+import {
+  DAYS_OPTIONS,
+  PREFERENCE_OPTIONS,
+  PEOPLE_OPTIONS,
+  PRICES,
+  MEALS,
+} from "@/lib/meals";
+import { PlanData, Step } from "@/lib/types";
+import { createOrder } from "@/lib/orders";
 
 const STORAGE_KEY = "ready-pa-la-semana-plan";
+const TOTAL_STEPS = 7;
 
-const DAYS_OPTIONS = [
-  { id: "1-2", label: "1-2 días a la semana", desc: "Ideal para probar", meals: 4 },
-  { id: "3", label: "3 días a la semana", desc: "El más popular", meals: 6 },
-  { id: "weekdays", label: "Días de semana", desc: "Lunes a viernes", meals: 10 },
-  { id: "everyday", label: "Todos los días", desc: "Máximo comodidad", meals: 14 },
-];
-
-const PREFERENCE_OPTIONS = [
-  { id: "protein", label: "Alto en Proteína", desc: "30g+ de proteína por comida", emoji: "🥩" },
-  { id: "calorie", label: "Calorie Smart", desc: "Menos de 550 calorías", emoji: "📊" },
-  { id: "keto", label: "Keto / Bajo en carbos", desc: "15g netos de carbos o menos", emoji: "🥑" },
-  { id: "balanced", label: "Equilibrado", desc: "Variedad y nutrición completa", emoji: "🥗" },
-  { id: "veggie", label: "Vegetariano / Vegano", desc: "Opciones plant-based", emoji: "🥦" },
-];
-
-const PEOPLE_OPTIONS = [
-  { id: "1", label: "1 persona", desc: "Porciones individuales" },
-  { id: "2", label: "2 personas", desc: "Ideal para parejas" },
-  { id: "3-4", label: "3-4 personas", desc: "Familia pequeña" },
-];
-
-const PRICES: Record<string, number> = {
-  "1-2": 59.99,
-  "3": 79.99,
-  weekdays: 109.99,
-  everyday: 139.99,
+const initialData: PlanData = {
+  days: null,
+  preference: null,
+  people: null,
+  selectedMeals: [],
+  zip: "",
+  address: "",
+  city: "",
+  name: "",
+  phone: "",
+  email: "",
 };
 
 export default function Home() {
   const [step, setStep] = useState<Step>(1);
-  const [data, setData] = useState<PlanData>({
-    days: null,
-    preference: null,
-    people: null,
-    zip: "",
-    email: "",
-  });
+  const [data, setData] = useState<PlanData>(initialData);
   const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // Cargar progreso guardado
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.data) setData(parsed.data);
+        if (parsed.data) setData({ ...initialData, ...parsed.data });
         if (parsed.step) setStep(parsed.step);
       }
     } catch {
-      // ignore
+      /* ignore */
     }
     setLoaded(true);
   }, []);
 
-  // Guardar progreso
   useEffect(() => {
     if (!loaded) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, step }));
   }, [data, step, loaded]);
 
+  const filteredMeals = useMemo(() => {
+    if (!data.preference) return MEALS;
+    return MEALS.filter((m) => m.tags.includes(data.preference!));
+  }, [data.preference]);
+
+  const maxMeals = DAYS_OPTIONS.find((o) => o.id === data.days)?.meals || 6;
+
   const canContinue = () => {
     if (step === 1) return !!data.days;
     if (step === 2) return !!data.preference;
     if (step === 3) return !!data.people;
-    if (step === 4) return data.zip.trim().length >= 5;
-    if (step === 5) return data.email.includes("@") && data.email.includes(".");
+    if (step === 4) return data.selectedMeals.length >= 1;
+    if (step === 5) return data.zip.length >= 5 && data.address.trim().length > 3 && data.city.trim().length > 1;
+    if (step === 6) return data.name.trim().length > 1 && data.email.includes("@") && data.phone.length >= 7;
     return true;
   };
 
   const next = () => {
     if (!canContinue()) return;
-    if (step < 5) setStep((s) => (s + 1) as Step);
+    if (step < TOTAL_STEPS) setStep((s) => (s + 1) as Step);
   };
 
   const back = () => {
@@ -96,321 +86,357 @@ export default function Home() {
 
   const reset = () => {
     localStorage.removeItem(STORAGE_KEY);
-    setData({ days: null, preference: null, people: null, zip: "", email: "" });
+    setData(initialData);
     setStep(1);
+    setError("");
   };
 
-  const progress = (step / 5) * 100;
+  const toggleMeal = (id: string) => {
+    setData((d) => {
+      const exists = d.selectedMeals.includes(id);
+      if (exists) {
+        return { ...d, selectedMeals: d.selectedMeals.filter((m) => m !== id) };
+      }
+      if (d.selectedMeals.length >= maxMeals) return d;
+      return { ...d, selectedMeals: [...d.selectedMeals, id] };
+    });
+  };
+
   const selectedDays = DAYS_OPTIONS.find((o) => o.id === data.days);
   const selectedPref = PREFERENCE_OPTIONS.find((o) => o.id === data.preference);
   const selectedPeople = PEOPLE_OPTIONS.find((o) => o.id === data.people);
   const basePrice = data.days ? PRICES[data.days] : 0;
   const discountPrice = +(basePrice * 0.5).toFixed(2);
 
+  const handleCheckout = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const orderId = await createOrder({
+        createdAt: Date.now(),
+        status: "pending",
+        customer: {
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          zip: data.zip,
+          address: data.address,
+          city: data.city,
+        },
+        plan: {
+          days: data.days || "",
+          preference: data.preference || "",
+          people: data.people || "",
+          meals: data.selectedMeals,
+        },
+        pricing: {
+          subtotal: basePrice,
+          discount: basePrice - discountPrice,
+          total: discountPrice,
+        },
+      });
+
+      const res = await fetch("/api/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: data.email,
+          name: data.name,
+          planLabel: selectedDays?.label || "Plan",
+          total: discountPrice,
+          orderId,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Error al crear sesi\u00f3n de pago");
+      if (json.url) {
+        window.location.href = json.url;
+      } else {
+        throw new Error("No se recibi\u00f3 URL de Stripe");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error inesperado";
+      setError(msg);
+      setLoading(false);
+    }
+  };
+
   if (!loaded) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
-      {/* Header */}
       <header className="border-b border-gray-100 sticky top-0 bg-white z-20">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-black text-white rounded-lg flex items-center justify-center font-bold text-lg">
+            <div className="w-9 h-9 bg-brand-600 text-white rounded-lg flex items-center justify-center font-bold text-lg">
               R
             </div>
-            <span className="font-semibold text-lg hidden sm:block">Ready pa&apos; la semana</span>
+            <span className="font-semibold text-lg hidden sm:block text-brand-800">
+              Ready pa&apos; la semana
+            </span>
           </div>
-
-          {/* Progress */}
-          <div className="flex-1 max-w-sm mx-6 hidden sm:block">
-            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-black rounded-full"
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.35 }}
-              />
-            </div>
-            <div className="flex justify-between text-[11px] text-gray-400 mt-1.5">
-              <span className={step >= 1 ? "text-black font-medium" : ""}>Días</span>
-              <span className={step >= 2 ? "text-black font-medium" : ""}>Tipo</span>
-              <span className={step >= 3 ? "text-black font-medium" : ""}>Personas</span>
-              <span className={step >= 4 ? "text-black font-medium" : ""}>Ubicación</span>
-              <span className={step >= 5 ? "text-black font-medium" : ""}>Listo</span>
-            </div>
-          </div>
-
-          <div className="text-sm text-gray-500">Paso {step} de 5</div>
+          <ProgressBar step={step} total={TOTAL_STEPS} />
+          <div className="text-sm text-gray-500">Paso {step} de {TOTAL_STEPS}</div>
         </div>
       </header>
 
-      {/* Promo banner */}
-      <div className="bg-emerald-100 text-emerald-900 text-center py-2.5 text-sm font-medium">
-        🎁 50% de descuento en tu primera caja + Desayuno gratis por 1 año
+      <div className="bg-brand-100 text-brand-900 text-center py-2.5 text-sm font-medium">
+        \u{1F381} 50% de descuento en tu primera caja + Desayuno gratis por 1 a\u00f1o
       </div>
 
-      {/* Main content */}
       <main className="flex-1 flex items-center justify-center px-4 py-8 md:py-12">
         <div className="w-full max-w-5xl grid md:grid-cols-2 gap-10 items-start">
-          {/* Left: Form */}
           <div className="order-2 md:order-1">
             <AnimatePresence mode="wait">
-              {/* STEP 1 - Days */}
               {step === 1 && (
-                <motion.div
-                  key="step1"
-                  initial={{ opacity: 0, x: 24 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -24 }}
-                  transition={{ duration: 0.25 }}
-                >
+                <StepWrapper key="s1">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    ¿Cuántos días a la semana quieres comidas?
+                    \u00bfCu\u00e1ntos d\u00edas a la semana quieres comidas?
                   </h1>
                   <p className="text-gray-500 mb-8">Puedes cambiarlo cuando quieras.</p>
-
                   <div className="space-y-3">
                     {DAYS_OPTIONS.map((opt) => (
-                      <button
+                      <OptionButton
                         key={opt.id}
-                        onClick={() => setData((d) => ({ ...d, days: opt.id }))}
-                        className={clsx(
-                          "w-full text-left px-5 py-4 rounded-xl border-2 transition-all flex items-center justify-between",
-                          data.days === opt.id
-                            ? "border-black bg-gray-50 shadow-sm"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <div>
-                          <div className="font-medium">{opt.label}</div>
-                          <div className="text-sm text-gray-500">{opt.desc}</div>
-                        </div>
-                        {data.days === opt.id && (
-                          <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-sm">
-                            ✓
-                          </div>
-                        )}
-                      </button>
+                        selected={data.days === opt.id}
+                        onClick={() => setData((d) => ({ ...d, days: opt.id, selectedMeals: [] }))}
+                        label={opt.label}
+                        desc={opt.desc}
+                      />
                     ))}
                   </div>
-                </motion.div>
+                </StepWrapper>
               )}
 
-              {/* STEP 2 - Preference */}
               {step === 2 && (
-                <motion.div
-                  key="step2"
-                  initial={{ opacity: 0, x: 24 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -24 }}
-                  transition={{ duration: 0.25 }}
-                >
+                <StepWrapper key="s2">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    ¿Qué tipo de comidas prefieres?
+                    \u00bfQu\u00e9 tipo de comidas prefieres?
                   </h1>
-                  <p className="text-gray-500 mb-8">Elige la que más se ajuste a tus metas.</p>
-
+                  <p className="text-gray-500 mb-8">Elige la que m\u00e1s se ajuste a tus metas.</p>
                   <div className="space-y-3">
                     {PREFERENCE_OPTIONS.map((opt) => (
-                      <button
+                      <OptionButton
                         key={opt.id}
-                        onClick={() => setData((d) => ({ ...d, preference: opt.id }))}
-                        className={clsx(
-                          "w-full text-left px-5 py-4 rounded-xl border-2 transition-all flex items-center gap-4",
-                          data.preference === opt.id
-                            ? "border-black bg-gray-50 shadow-sm"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <span className="text-2xl">{opt.emoji}</span>
-                        <div className="flex-1">
-                          <div className="font-medium">{opt.label}</div>
-                          <div className="text-sm text-gray-500">{opt.desc}</div>
-                        </div>
-                        {data.preference === opt.id && (
-                          <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-sm">
-                            ✓
-                          </div>
-                        )}
-                      </button>
+                        selected={data.preference === opt.id}
+                        onClick={() =>
+                          setData((d) => ({ ...d, preference: opt.id, selectedMeals: [] }))
+                        }
+                        label={opt.label}
+                        desc={opt.desc}
+                        emoji={opt.emoji}
+                      />
                     ))}
                   </div>
-                </motion.div>
+                </StepWrapper>
               )}
 
-              {/* STEP 3 - People */}
               {step === 3 && (
-                <motion.div
-                  key="step3"
-                  initial={{ opacity: 0, x: 24 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -24 }}
-                  transition={{ duration: 0.25 }}
-                >
+                <StepWrapper key="s3">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    ¿Para cuántas personas?
+                    \u00bfPara cu\u00e1ntas personas?
                   </h1>
-                  <p className="text-gray-500 mb-8">Así ajustamos las porciones.</p>
-
+                  <p className="text-gray-500 mb-8">As\u00ed ajustamos las porciones.</p>
                   <div className="space-y-3">
                     {PEOPLE_OPTIONS.map((opt) => (
-                      <button
+                      <OptionButton
                         key={opt.id}
+                        selected={data.people === opt.id}
                         onClick={() => setData((d) => ({ ...d, people: opt.id }))}
-                        className={clsx(
-                          "w-full text-left px-5 py-4 rounded-xl border-2 transition-all flex items-center justify-between",
-                          data.people === opt.id
-                            ? "border-black bg-gray-50 shadow-sm"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <div>
-                          <div className="font-medium">{opt.label}</div>
-                          <div className="text-sm text-gray-500">{opt.desc}</div>
-                        </div>
-                        {data.people === opt.id && (
-                          <div className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-sm">
-                            ✓
-                          </div>
-                        )}
-                      </button>
+                        label={opt.label}
+                        desc={opt.desc}
+                      />
                     ))}
                   </div>
-                </motion.div>
+                </StepWrapper>
               )}
 
-              {/* STEP 4 - ZIP */}
               {step === 4 && (
-                <motion.div
-                  key="step4"
-                  initial={{ opacity: 0, x: 24 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -24 }}
-                  transition={{ duration: 0.25 }}
-                >
+                <StepWrapper key="s4">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    Llevemos comida saludable a tu casa
+                    Elige tus comidas
                   </h1>
-                  <p className="text-gray-500 mb-8">
-                    Solo necesitamos tu código postal para saber dónde enviarte tus comidas.
+                  <p className="text-gray-500 mb-2">
+                    Selecciona hasta {maxMeals} comidas ({data.selectedMeals.length}/{maxMeals})
                   </p>
-
-                  <div className="relative">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="Código postal (ej. 30901)"
-                      value={data.zip}
-                      onChange={(e) =>
-                        setData((d) => ({
-                          ...d,
-                          zip: e.target.value.replace(/\D/g, "").slice(0, 5),
-                        }))
-                      }
-                      className="w-full px-5 py-4 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-lg"
-                      maxLength={5}
-                    />
+                  <div className="grid grid-cols-2 gap-3 mt-6">
+                    {filteredMeals.map((meal) => (
+                      <MealCard
+                        key={meal.id}
+                        meal={meal}
+                        selected={data.selectedMeals.includes(meal.id)}
+                        onToggle={() => toggleMeal(meal.id)}
+                      />
+                    ))}
                   </div>
-                  {data.zip.length > 0 && data.zip.length < 5 && (
-                    <p className="text-sm text-amber-600 mt-2">Ingresa los 5 dígitos del código postal</p>
+                  {filteredMeals.length === 0 && (
+                    <p className="text-gray-400 text-center py-8">
+                      No hay comidas para esta preferencia. Vuelve y elige otra.
+                    </p>
                   )}
-                </motion.div>
+                </StepWrapper>
               )}
 
-              {/* STEP 5 - Summary + Email */}
               {step === 5 && (
-                <motion.div
-                  key="step5"
-                  initial={{ opacity: 0, x: 24 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -24 }}
-                  transition={{ duration: 0.25 }}
-                >
+                <StepWrapper key="s5">
                   <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
-                    ¡Tu plan está listo!
+                    \u00bfD\u00f3nde te enviamos las comidas?
                   </h1>
-                  <p className="text-gray-500 mb-6">Revisa tu selección y deja tu correo para continuar.</p>
+                  <p className="text-gray-500 mb-8">Necesitamos tu direcci\u00f3n de entrega.</p>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5">C\u00f3digo postal</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="30901"
+                        value={data.zip}
+                        onChange={(e) =>
+                          setData((d) => ({
+                            ...d,
+                            zip: e.target.value.replace(/\D/g, "").slice(0, 5),
+                          }))
+                        }
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none"
+                        maxLength={5}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5">Direcci\u00f3n</label>
+                      <input
+                        type="text"
+                        placeholder="Calle, n\u00famero, apto..."
+                        value={data.address}
+                        onChange={(e) => setData((d) => ({ ...d, address: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5">Ciudad</label>
+                      <input
+                        type="text"
+                        placeholder="Augusta"
+                        value={data.city}
+                        onChange={(e) => setData((d) => ({ ...d, city: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </StepWrapper>
+              )}
 
-                  <div className="bg-gray-50 rounded-2xl p-5 space-y-3 mb-6">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Frecuencia</span>
-                      <span className="font-medium">{selectedDays?.label}</span>
+              {step === 6 && (
+                <StepWrapper key="s6">
+                  <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
+                    Tus datos de contacto
+                  </h1>
+                  <p className="text-gray-500 mb-8">Para confirmar el pedido y enviarte actualizaciones.</p>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5">Nombre completo</label>
+                      <input
+                        type="text"
+                        placeholder="Tu nombre"
+                        value={data.name}
+                        onChange={(e) => setData((d) => ({ ...d, name: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none"
+                      />
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Tipo de comida</span>
-                      <span className="font-medium">{selectedPref?.label}</span>
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5">Correo electr\u00f3nico</label>
+                      <input
+                        type="email"
+                        placeholder="tucorreo@ejemplo.com"
+                        value={data.email}
+                        onChange={(e) => setData((d) => ({ ...d, email: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none"
+                      />
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Personas</span>
-                      <span className="font-medium">{selectedPeople?.label}</span>
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5">Tel\u00e9fono</label>
+                      <input
+                        type="tel"
+                        placeholder="706-555-1234"
+                        value={data.phone}
+                        onChange={(e) => setData((d) => ({ ...d, phone: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none"
+                      />
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Código postal</span>
-                      <span className="font-medium">{data.zip}</span>
-                    </div>
-                    <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
+                  </div>
+                </StepWrapper>
+              )}
+
+              {step === 7 && (
+                <StepWrapper key="s7">
+                  <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
+                    \u00a1Tu plan est\u00e1 listo!
+                  </h1>
+                  <p className="text-gray-500 mb-6">Revisa y procede al pago seguro con Stripe.</p>
+
+                  <div className="bg-brand-50 rounded-2xl p-5 space-y-3 mb-6 border border-brand-100">
+                    <Row label="Frecuencia" value={selectedDays?.label} />
+                    <Row label="Tipo" value={selectedPref?.label} />
+                    <Row label="Personas" value={selectedPeople?.label} />
+                    <Row label="Comidas" value={`${data.selectedMeals.length} seleccionadas`} />
+                    <Row label="Direcci\u00f3n" value={`${data.address}, ${data.city} ${data.zip}`} />
+                    <Row label="Contacto" value={data.name} />
+                    <div className="border-t border-brand-200 pt-3 flex justify-between items-center">
                       <span className="text-gray-500">Primera caja</span>
                       <div className="text-right">
-                        <span className="line-through text-gray-400 text-sm mr-2">${basePrice.toFixed(2)}</span>
-                        <span className="text-2xl font-bold text-emerald-600">${discountPrice}</span>
+                        <span className="line-through text-gray-400 text-sm mr-2">
+                          ${basePrice.toFixed(2)}
+                        </span>
+                        <span className="text-2xl font-bold text-brand-700">
+                          ${discountPrice.toFixed(2)}
+                        </span>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-400">
-                      Incluye ~{selectedDays?.meals || 0} comidas + desayuno gratis
-                    </p>
                   </div>
 
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium mb-2">Tu correo electrónico</label>
-                    <input
-                      type="email"
-                      placeholder="tucorreo@ejemplo.com"
-                      value={data.email}
-                      onChange={(e) => setData((d) => ({ ...d, email: e.target.value }))}
-                      className="w-full px-5 py-3.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none"
-                    />
-                  </div>
+                  {error && (
+                    <div className="bg-red-50 text-red-700 text-sm p-3 rounded-xl mb-4">{error}</div>
+                  )}
 
                   <button
-                    disabled={!canContinue()}
+                    onClick={handleCheckout}
+                    disabled={loading}
                     className={clsx(
                       "w-full py-4 rounded-xl font-medium text-lg transition-colors",
-                      canContinue()
-                        ? "bg-black text-white hover:bg-gray-800"
-                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                      loading
+                        ? "bg-gray-300 text-gray-500 cursor-wait"
+                        : "bg-brand-600 text-white hover:bg-brand-700"
                     )}
                   >
-                    Continuar al pago →
+                    {loading ? "Procesando..." : "Pagar con Stripe \u2192"}
                   </button>
                   <p className="text-center text-sm text-gray-400 mt-3">
-                    Puedes pausar o cancelar en cualquier momento
+                    Pago seguro \u00b7 Puedes pausar o cancelar cuando quieras
                   </p>
-
                   <button
                     onClick={reset}
-                    className="w-full mt-4 text-sm text-gray-400 hover:text-gray-600 transition-colors"
+                    className="w-full mt-4 text-sm text-gray-400 hover:text-gray-600"
                   >
                     Empezar de nuevo
                   </button>
-                </motion.div>
+                </StepWrapper>
               )}
             </AnimatePresence>
 
-            {/* Navigation buttons */}
-            {step < 5 && (
+            {step < 7 && (
               <div className="flex gap-3 mt-10">
                 {step > 1 && (
                   <button
                     onClick={back}
-                    className="px-6 py-3.5 rounded-xl border-2 border-gray-200 font-medium hover:bg-gray-50 transition-colors"
+                    className="px-6 py-3.5 rounded-xl border-2 border-gray-200 font-medium hover:bg-gray-50"
                   >
-                    Atrás
+                    Atr\u00e1s
                   </button>
                 )}
                 <button
@@ -419,7 +445,7 @@ export default function Home() {
                   className={clsx(
                     "flex-1 py-3.5 rounded-xl font-medium transition-colors",
                     canContinue()
-                      ? "bg-black text-white hover:bg-gray-800"
+                      ? "bg-brand-600 text-white hover:bg-brand-700"
                       : "bg-gray-200 text-gray-400 cursor-not-allowed"
                   )}
                 >
@@ -429,42 +455,66 @@ export default function Home() {
             )}
           </div>
 
-          {/* Right: Visual */}
           <div className="order-1 md:order-2 hidden md:block sticky top-28">
-            <div className="relative aspect-[4/5] rounded-3xl overflow-hidden bg-gradient-to-br from-orange-50 via-amber-50 to-emerald-50 shadow-xl">
+            <div className="relative aspect-[4/5] rounded-3xl overflow-hidden bg-gradient-to-br from-brand-50 via-teal-50 to-orange-50 shadow-xl">
               <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
-                <div className="text-7xl mb-6">🍽️</div>
+                <div className="text-7xl mb-6">\u{1F37D}\uFE0F</div>
                 <h3 className="text-2xl font-semibold text-gray-800 mb-3">
                   Comidas listas en 2 minutos
                 </h3>
                 <p className="text-gray-500 text-sm max-w-xs leading-relaxed">
-                  Preparadas por chefs • Aprobadas por nutricionistas • Frescas, nunca congeladas
+                  Preparadas por chefs \u00b7 Aprobadas por nutricionistas \u00b7 Frescas
                 </p>
-
                 {selectedDays && (
                   <div className="mt-8 bg-white/80 backdrop-blur rounded-2xl px-5 py-3 shadow-sm">
-                    <div className="text-sm text-gray-500">Tu selección actual</div>
-                    <div className="font-semibold text-gray-900">{selectedDays.label}</div>
+                    <div className="text-sm text-gray-500">Tu selecci\u00f3n</div>
+                    <div className="font-semibold text-brand-800">{selectedDays.label}</div>
                     {selectedPref && (
-                      <div className="text-sm text-emerald-700 mt-0.5">{selectedPref.label}</div>
+                      <div className="text-sm text-brand-600 mt-0.5">{selectedPref.label}</div>
+                    )}
+                    {data.selectedMeals.length > 0 && (
+                      <div className="text-sm text-gray-500 mt-0.5">
+                        {data.selectedMeals.length} comidas
+                      </div>
                     )}
                   </div>
                 )}
               </div>
-
-              {/* Decorative circles */}
-              <div className="absolute top-10 left-8 w-24 h-24 rounded-full bg-orange-200/50" />
-              <div className="absolute bottom-16 right-8 w-32 h-32 rounded-full bg-emerald-200/40" />
-              <div className="absolute top-1/3 right-10 w-14 h-14 rounded-full bg-amber-200/60" />
+              <div className="absolute top-10 left-8 w-24 h-24 rounded-full bg-brand-200/50" />
+              <div className="absolute bottom-16 right-8 w-32 h-32 rounded-full bg-orange-200/40" />
             </div>
           </div>
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-gray-100 py-6 text-center text-sm text-gray-400">
-        © 2026 Ready pa&apos; la semana · Puedes pausar o cancelar cuando quieras
+        \u00a9 2026 Ready pa&apos; la semana \u00b7{" "}
+        <a href="/admin" className="hover:text-brand-600 underline">
+          Admin
+        </a>
       </footer>
+    </div>
+  );
+}
+
+function StepWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -24 }}
+      transition={{ duration: 0.25 }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function Row({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="flex justify-between text-sm">
+      <span className="text-gray-500">{label}</span>
+      <span className="font-medium text-right max-w-[60%] truncate">{value || "\u2014"}</span>
     </div>
   );
 }

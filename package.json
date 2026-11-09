@@ -1,6 +1,6 @@
 {
   "name": "ready-pa-la-semana",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,7 +13,10 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "clsx": "^2.1.1",
-    "framer-motion": "^11.15.0"
+    "framer-motion": "^11.15.0",
+    "firebase": "^11.0.0",
+    "stripe": "^17.0.0",
+    "lucide-react": "^0.460.0"
   },
   "devDependencies": {
     "@types/node": "^20",
