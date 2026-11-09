@@ -1,64 +1,64 @@
-# Ready pa' la semana \u{1F37D}\uFE0F
+# Ready pa' la semana
 
-Servicio de delivery de comidas preparadas \u2014 flujo de onboarding multi-step + panel admin.
-
-## Caracter\u00edsticas
-
-- **Wizard de 7 pasos**: d\u00edas, preferencia, personas, selecci\u00f3n de comidas, direcci\u00f3n, datos de contacto, pago
-- **Selecci\u00f3n de comidas** filtrada por preferencia diet\u00e9tica
-- **Stripe Checkout** real (requiere `STRIPE_SECRET_KEY`)
-- **Firebase Firestore** para guardar pedidos
-- **Panel Admin** en `/admin` (login con Firebase Auth)
-- **Colores personalizados** (teal/brand)
-- **Arquitectura modular** (components, lib, types)
-- Persistencia en localStorage
-
-## Stack
-
-- Next.js 15 (App Router) + TypeScript
-- Tailwind CSS + Framer Motion
-- Firebase (Auth + Firestore)
-- Stripe
-
-## Variables de entorno (Vercel)
-
-```
-STRIPE_SECRET_KEY=sk_live_...   # o sk_test_...
-NEXT_PUBLIC_BASE_URL=https://ready-pa-la-semana.vercel.app
-```
-
-Firebase usa por defecto el proyecto `agromaxgt-app` (las claves p\u00fablicas est\u00e1n en `lib/firebase.ts`).
+Servicio de delivery de comidas preparadas — onboarding multi-step + panel admin + seguimiento.
 
 ## Enlaces
 
 | Sitio | URL |
 |-------|-----|
 | Cliente | https://ready-pa-la-semana.vercel.app |
+| Seguimiento | https://ready-pa-la-semana.vercel.app/seguimiento |
 | Admin | https://ready-pa-la-semana.vercel.app/admin |
 | Repo | https://github.com/62ramire76topcb-design/ready-pa-la-semana |
+
+## Variables de entorno (Vercel)
+
+```
+STRIPE_SECRET_KEY=sk_test_... o sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+NEXT_PUBLIC_BASE_URL=https://ready-pa-la-semana.vercel.app
+```
+
+Firebase usa el proyecto `agromaxgt-app` (claves publicas en `lib/firebase.ts`).
+
+## Configurar Webhook de Stripe
+
+1. Entra a [Stripe Dashboard → Developers → Webhooks](https://dashboard.stripe.com/webhooks)
+2. Clic en **Add endpoint**
+3. Endpoint URL:
+   ```
+   https://ready-pa-la-semana.vercel.app/api/webhooks/stripe
+   ```
+4. Eventos a escuchar:
+   - `checkout.session.completed`
+   - `checkout.session.expired` (opcional)
+5. Copia el **Signing secret** (`whsec_...`)
+6. En Vercel → Settings → Environment Variables agrega:
+   - Key: `STRIPE_WEBHOOK_SECRET`
+   - Value: el `whsec_...`
+7. Redeploy el proyecto
+
+Cuando un cliente pague, el pedido pasa automaticamente de `pending` → `paid`.
+
+## Stack
+
+- Next.js 15 + TypeScript + Tailwind
+- Firebase (Auth + Firestore)
+- Stripe Checkout + Webhooks
+- Framer Motion
 
 ## Estructura
 
 ```
 app/
-  page.tsx              # Wizard principal
-  admin/page.tsx        # Panel de pedidos
-  success/page.tsx      # P\u00e1gina post-pago
-  api/create-checkout-session/route.ts
-components/wizard/      # Componentes del flujo
+  page.tsx                         # Wizard 7 pasos
+  admin/page.tsx                   # Panel admin con filtros
+  success/page.tsx                 # Post-pago + PDF
+  seguimiento/page.tsx             # Tracking de orden
+  api/
+    create-checkout-session/       # Crea sesion Stripe
+    webhooks/stripe/               # Webhook → marca paid
 lib/
-  firebase.ts
-  orders.ts
-  meals.ts
-  types.ts
+  firebase.ts, orders.ts, meals.ts, types.ts
+components/wizard/
 ```
-
-## Admin
-
-1. Ve a `/admin`
-2. Inicia sesi\u00f3n con una cuenta de Firebase Auth del proyecto `agromaxgt-app`
-3. Ver\u00e1s todos los pedidos, direcciones y podr\u00e1s cambiar el estado
-
----
-
-Hecho con \u2764\uFE0F de forma modular.
