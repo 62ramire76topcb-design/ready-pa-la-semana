@@ -1,8 +1,10 @@
-export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
 export interface PlanData {
   days: string | null;
   preference: string | null;
+  avoid: string[];
+  goals: string[];
   people: string | null;
   selectedMeals: string[];
   zip: string;
@@ -22,6 +24,7 @@ export interface Meal {
   tags: string[];
   emoji: string;
   price: number;
+  image: string;
 }
 
 export type OrderStatus =
@@ -50,6 +53,8 @@ export interface Order {
     preference: string;
     people: string;
     meals: string[];
+    avoid?: string[];
+    goals?: string[];
   };
   pricing: {
     subtotal: number;
