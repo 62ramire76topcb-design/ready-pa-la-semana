@@ -28,6 +28,7 @@ export interface Meal {
 }
 
 export type OrderStatus =
+  | "lead"
   | "pending"
   | "paid"
   | "preparing"
@@ -35,11 +36,15 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 
+export type OrderSource = "stripe" | "whatsapp" | "manual";
+
 export interface Order {
   id?: string;
   orderNumber: string;
   createdAt: number;
   status: OrderStatus;
+  source?: OrderSource;
+  notes?: string;
   customer: {
     name: string;
     email: string;
