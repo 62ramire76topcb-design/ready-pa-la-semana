@@ -3,12 +3,12 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyAEj22gE5UySwWVwIec6jpBiZ2nb1OBftM",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "agromaxgt-app.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "agromaxgt-app",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "agromaxgt-app.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "648144313047",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:648144313047:web:118a67464d99f2d0462e92",
+  apiKey: "AIzaSyDrFfZ7zEx2TXR1Dwwp_C88kBjxJlAKRrE",
+  authDomain: "ready-pa-la-semana.firebaseapp.com",
+  projectId: "ready-pa-la-semana",
+  storageBucket: "ready-pa-la-semana.firebasestorage.app",
+  messagingSenderId: "952187568039",
+  appId: "1:952187568039:web:ca2a82cb5ac72537530082",
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
