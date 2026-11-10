@@ -139,7 +139,6 @@ export default function Home() {
         },
       });
 
-      // Guardar para la pagina de exito
       sessionStorage.setItem(
         "last_order",
         JSON.stringify({ orderId, orderNumber, data, total: discountPrice })
@@ -183,8 +182,8 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-white">
       <header className="border-b border-gray-100 sticky top-0 bg-white z-20">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             <div className="w-9 h-9 bg-brand-600 text-white rounded-lg flex items-center justify-center font-bold text-lg">
               R
             </div>
@@ -192,9 +191,21 @@ export default function Home() {
               Ready pa&apos; la semana
             </span>
           </div>
-          <ProgressBar step={step} total={TOTAL_STEPS} />
-          <div className="text-sm text-gray-500">
-            Paso {step} de {TOTAL_STEPS}
+
+          <div className="hidden md:block flex-1 px-4">
+            <ProgressBar step={step} total={TOTAL_STEPS} />
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <a
+              href="/seguimiento"
+              className="text-sm font-medium px-3 py-2 rounded-lg border border-brand-600 text-brand-700 hover:bg-brand-50 transition-colors whitespace-nowrap"
+            >
+              Seguir pedido
+            </a>
+            <span className="text-sm text-gray-500 hidden sm:inline">
+              {step}/{TOTAL_STEPS}
+            </span>
           </div>
         </div>
       </header>
