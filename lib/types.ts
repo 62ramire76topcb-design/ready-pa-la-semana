@@ -1,71 +1,57 @@
-export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-
-export interface PlanData {
-  days: string | null;
-  preference: string | null;
-  avoid: string[];
-  goals: string[];
-  people: string | null;
-  selectedMeals: string[];
-  zip: string;
-  address: string;
-  city: string;
-  name: string;
-  phone: string;
-  email: string;
-}
-
-export interface Meal {
-  id: string;
-  name: string;
-  description: string;
-  calories: number;
-  protein: number;
-  tags: string[];
-  emoji: string;
-  price: number;
-  image: string;
-}
-
 export type OrderStatus =
-  | "lead"
   | "pending"
   | "paid"
   | "preparing"
-  | "shipped"
+  | "ready"
   | "delivered"
   | "cancelled";
 
-export type OrderSource = "stripe" | "whatsapp" | "manual";
+export interface Meal {
+  id?: string;
+  name: string;
+  description: string; // ingredientes / descripcion corta
+  price: number;
+  imageUrl: string;
+  available: boolean; // disponible hoy / publicado
+  stock: number; // stock bajo editable
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CartItem {
+  mealId: string;
+  name: string;
+  price: number;
+  qty: number;
+  imageUrl?: string;
+}
 
 export interface Order {
   id?: string;
   orderNumber: string;
   createdAt: number;
   status: OrderStatus;
-  source?: OrderSource;
-  notes?: string;
+  type: "menu" | "special";
   customer: {
     name: string;
     email: string;
     phone: string;
-    zip: string;
     address: string;
     city: string;
+    zip: string;
+    notes?: string;
   };
-  plan: {
-    days: string;
-    preference: string;
-    people: string;
-    meals: string[];
-    avoid?: string[];
-    goals?: string[];
-  };
+  items: CartItem[];
+  specialRequest?: string; // pedido especial
+  deliveryDate?: string; // fecha programada YYYY-MM-DD
   pricing: {
     subtotal: number;
-    discount: number;
+    deliveryFee: number;
     total: number;
   };
   stripeSessionId?: string;
   statusHistory?: { status: OrderStatus; at: number }[];
 }
+
+export const DELIVERY_ZONE = "Charlotte, NC";
+export const DELIVERY_FEE = 5;

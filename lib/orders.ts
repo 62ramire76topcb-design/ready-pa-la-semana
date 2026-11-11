@@ -8,7 +8,6 @@ import {
   doc,
   getDoc,
   where,
-  deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { Order, OrderStatus } from "./types";
@@ -62,12 +61,4 @@ export async function updateOrderStatus(
     status,
     statusHistory: [...history, { status, at: Date.now() }],
   });
-}
-
-export async function updateOrderNotes(orderId: string, notes: string): Promise<void> {
-  await updateDoc(doc(db, ORDERS_COLLECTION, orderId), { notes });
-}
-
-export async function deleteOrder(orderId: string): Promise<void> {
-  await deleteDoc(doc(db, ORDERS_COLLECTION, orderId));
 }
