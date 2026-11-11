@@ -1,43 +1,52 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut, User } from "firebase/auth";
+import { useEffect, useMemo, useState } from "react";
+import {
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut,
+  User,
+} from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { getOrders, updateOrderStatus, updateOrderNotes, createOrder, deleteOrder } from "@/lib/orders";
-import { Order, OrderStatus } from "@/lib/types";
-import { DAYS_OPTIONS, PREFERENCE_OPTIONS, MEALS, generateOrderNumber, PRICES } from "@/lib/meals";
-import { buildWhatsAppUrl } from "@/lib/whatsapp";
+import {
+  getAllMeals,
+  createMeal,
+  updateMeal,
+  deleteMeal,
+  uploadMealImage,
+} from "@/lib/meals";
+import { getOrders, updateOrderStatus } from "@/lib/orders";
+import { Meal, Order, OrderStatus } from "@/lib/types";
 import clsx from "clsx";
 
+type Tab = "meals" | "orders";
+
 const STATUS_LABELS: Record<OrderStatus, string> = {
-  lead: "Lead (WhatsApp)",
-  pending: "Pendiente pago",
+  pending: "Pendiente",
   paid: "Pagado",
   preparing: "Preparando",
-  shipped: "Enviado",
+  ready: "Listo",
   delivered: "Entregado",
   cancelled: "Cancelado",
 };
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
-  lead: "bg-emerald-100 text-emerald-800",
   pending: "bg-yellow-100 text-yellow-800",
   paid: "bg-blue-100 text-blue-800",
   preparing: "bg-purple-100 text-purple-800",
-  shipped: "bg-indigo-100 text-indigo-800",
+  ready: "bg-indigo-100 text-indigo-800",
   delivered: "bg-green-100 text-green-800",
   cancelled: "bg-red-100 text-red-800",
 };
 
-const ALL_STATUSES: OrderStatus[] = [
-  "lead",
-  "pending",
-  "paid",
-  "preparing",
-  "shipped",
-  "delivered",
-  "cancelled",
-];
+const emptyMealForm = {
+  name: "",
+  description: "",
+  price: "",
+  imageUrl: "",
+  available: true,
+  stock: "5",
+};
 
 export default function AdminPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -45,47 +54,40 @@ export default function AdminPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
+  const [tab, setTab] = useState<Tab>("meals");
+
+  const [meals, setMeals] = useState<Meal[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  const [form, setForm] = useState(emptyMealForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [formError, setFormError] = useState("");
+
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "all">("all");
   const [search, setSearch] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
-  const [manual, setManual] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    address: "",
-    city: "",
-    zip: "",
-    days: "3",
-    notes: "",
-  });
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
-      if (u) loadOrders();
+      if (u) refresh();
     });
     return () => unsub();
   }, []);
 
-  const loadOrders = async () => {
-    setOrdersLoading(true);
+  const refresh = async () => {
+    setDataLoading(true);
     try {
-      const data = await getOrders();
-      setOrders(data);
-      const drafts: Record<string, string> = {};
-      data.forEach((o) => {
-        if (o.id) drafts[o.id] = o.notes || "";
-      });
-      setNoteDrafts(drafts);
-    } catch (err) {
-      console.error(err);
+      const [m, o] = await Promise.all([getAllMeals(), getOrders()]);
+      setMeals(m);
+      setOrders(o);
+    } catch (e) {
+      console.error(e);
     }
-    setOrdersLoading(false);
+    setDataLoading(false);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -100,77 +102,107 @@ export default function AdminPage() {
 
   const handleLogout = async () => {
     await signOut(auth);
+    setMeals([]);
     setOrders([]);
+  };
+
+  const resetForm = () => {
+    setForm(emptyMealForm);
+    setEditingId(null);
+    setFormError("");
+  };
+
+  const startEdit = (meal: Meal) => {
+    setEditingId(meal.id || null);
+    setForm({
+      name: meal.name,
+      description: meal.description,
+      price: String(meal.price),
+      imageUrl: meal.imageUrl || "",
+      available: meal.available,
+      stock: String(meal.stock),
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleImage = async (file: File | null) => {
+    if (!file) return;
+    setUploading(true);
+    setFormError("");
+    try {
+      const url = await uploadMealImage(file, editingId || undefined);
+      setForm((f) => ({ ...f, imageUrl: url }));
+    } catch (err) {
+      console.error(err);
+      setFormError(
+        "No se pudo subir la imagen. Revisa Firebase Storage (reglas y bucket)."
+      );
+    }
+    setUploading(false);
+  };
+
+  const saveMeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    const price = Number(form.price);
+    const stock = Number(form.stock);
+    if (!form.name.trim()) {
+      setFormError("El nombre es obligatorio");
+      return;
+    }
+    if (isNaN(price) || price < 0) {
+      setFormError("Precio invalido");
+      return;
+    }
+    if (isNaN(stock) || stock < 0) {
+      setFormError("Stock invalido");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        description: form.description.trim(),
+        price,
+        imageUrl: form.imageUrl.trim(),
+        available: form.available,
+        stock,
+      };
+      if (editingId) {
+        await updateMeal(editingId, payload);
+      } else {
+        await createMeal(payload);
+      }
+      resetForm();
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      setFormError("Error al guardar. Revisa reglas de Firestore.");
+    }
+    setSaving(false);
+  };
+
+  const toggleAvailable = async (meal: Meal) => {
+    if (!meal.id) return;
+    await updateMeal(meal.id, { available: !meal.available });
+    await refresh();
+  };
+
+  const removeMeal = async (id: string) => {
+    if (!confirm("Eliminar este plato?")) return;
+    await deleteMeal(id);
+    await refresh();
   };
 
   const changeStatus = async (orderId: string, status: OrderStatus) => {
     await updateOrderStatus(orderId, status);
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status } : o))
+    );
   };
 
-  const saveNotes = async (orderId: string) => {
-    const notes = noteDrafts[orderId] || "";
-    await updateOrderNotes(orderId, notes);
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, notes } : o)));
-  };
-
-  const handleDelete = async (orderId: string) => {
-    if (!confirm("Eliminar este pedido?")) return;
-    await deleteOrder(orderId);
-    setOrders((prev) => prev.filter((o) => o.id !== orderId));
-  };
-
-  const handleCreateManual = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-    try {
-      const orderNumber = generateOrderNumber();
-      const total = PRICES[manual.days] ? +(PRICES[manual.days] * 0.5).toFixed(2) : 39.99;
-      const id = await createOrder({
-        orderNumber,
-        createdAt: Date.now(),
-        status: "lead",
-        source: "manual",
-        notes: manual.notes,
-        customer: {
-          name: manual.name,
-          email: manual.email || "sin-email@local",
-          phone: manual.phone,
-          zip: manual.zip || "00000",
-          address: manual.address || "Por definir",
-          city: manual.city || "Por definir",
-        },
-        plan: {
-          days: manual.days,
-          preference: "balanced",
-          people: "1",
-          meals: [],
-        },
-        pricing: {
-          subtotal: total * 2,
-          discount: total,
-          total,
-        },
-      });
-      await loadOrders();
-      setShowCreate(false);
-      setManual({ name: "", phone: "", email: "", address: "", city: "", zip: "", days: "3", notes: "" });
-      // Copiar numero al portapapeles
-      try {
-        await navigator.clipboard.writeText(orderNumber);
-        alert(`Orden creada: ${orderNumber}\n(Numero copiado al portapapeles)`);
-      } catch {
-        alert(`Orden creada: ${orderNumber}`);
-      }
-      void id;
-    } catch (err) {
-      console.error(err);
-      alert("Error al crear orden");
-    }
-    setCreating(false);
-  };
-
-  const filtered = useMemo(() => {
+  const filteredOrders = useMemo(() => {
     let list = orders;
     if (filterStatus !== "all") list = list.filter((o) => o.status === filterStatus);
     if (search.trim()) {
@@ -181,32 +213,16 @@ export default function AdminPage() {
           o.customer.name.toLowerCase().includes(q) ||
           o.customer.email.toLowerCase().includes(q) ||
           o.customer.phone.includes(q) ||
-          o.customer.city.toLowerCase().includes(q) ||
-          (o.notes || "").toLowerCase().includes(q)
+          (o.specialRequest || "").toLowerCase().includes(q)
       );
     }
     return list;
   }, [orders, filterStatus, search]);
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { all: orders.length };
-    ALL_STATUSES.forEach((s) => {
-      c[s] = orders.filter((o) => o.status === s).length;
-    });
-    return c;
-  }, [orders]);
-
-  const stats = useMemo(() => {
-    const paid = orders.filter((o) => ["paid", "preparing", "shipped", "delivered"].includes(o.status));
-    const revenue = paid.reduce((sum, o) => sum + (o.pricing?.total || 0), 0);
-    const leads = orders.filter((o) => o.status === "lead").length;
-    return { paid: paid.length, revenue, leads, total: orders.length };
-  }, [orders]);
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -214,21 +230,46 @@ export default function AdminPage() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <form onSubmit={handleLogin} className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md space-y-5">
+        <form
+          onSubmit={handleLogin}
+          className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md space-y-5"
+        >
           <div className="text-center">
-            <div className="w-12 h-12 bg-black text-white rounded-xl flex items-center justify-center font-bold text-xl mx-auto mb-3">R</div>
+            <div className="w-12 h-12 bg-brand-600 text-white rounded-xl flex items-center justify-center font-bold text-xl mx-auto mb-3">
+              R
+            </div>
             <h1 className="text-2xl font-bold">Admin · Ready pa&apos; la semana</h1>
+            <p className="text-gray-500 text-sm mt-1">Control del menu y pedidos</p>
           </div>
-          {authError && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-xl">{authError}</div>}
+          {authError && (
+            <div className="bg-red-50 text-red-700 text-sm p-3 rounded-xl">{authError}</div>
+          )}
           <div>
             <label className="block text-sm font-medium mb-1.5">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none" required />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none"
+              required
+            />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1.5">Contrasena</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none" required />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none"
+              required
+            />
           </div>
-          <button type="submit" className="w-full py-3.5 bg-black text-white rounded-xl font-medium hover:bg-gray-800">Entrar</button>
+          <button
+            type="submit"
+            className="w-full py-3.5 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700"
+          >
+            Entrar
+          </button>
         </form>
       </div>
     );
@@ -237,203 +278,397 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-black text-white rounded-lg flex items-center justify-center font-bold">R</div>
+            <div className="w-9 h-9 bg-brand-600 text-white rounded-lg flex items-center justify-center font-bold">
+              R
+            </div>
             <div>
               <h1 className="font-bold text-lg">Panel Admin</h1>
               <p className="text-xs text-gray-500">{user.email}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            <button onClick={() => setShowCreate(true)} className="text-sm px-4 py-2 rounded-lg bg-black text-white hover:bg-gray-800">
-              + Nueva orden
+          <div className="flex items-center gap-2">
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setTab("meals")}
+                className={clsx(
+                  "px-3 py-1.5 rounded-md text-sm font-medium",
+                  tab === "meals" ? "bg-white shadow text-brand-800" : "text-gray-600"
+                )}
+              >
+                Menu / Platos
+              </button>
+              <button
+                onClick={() => setTab("orders")}
+                className={clsx(
+                  "px-3 py-1.5 rounded-md text-sm font-medium",
+                  tab === "orders" ? "bg-white shadow text-brand-800" : "text-gray-600"
+                )}
+              >
+                Pedidos ({orders.length})
+              </button>
+            </div>
+            <button
+              onClick={refresh}
+              className="text-sm px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50"
+            >
+              Actualizar
             </button>
-            <button onClick={loadOrders} className="text-sm px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">Actualizar</button>
-            <button onClick={handleLogout} className="text-sm px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200">Salir</button>
+            <button
+              onClick={handleLogout}
+              className="text-sm px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200"
+            >
+              Salir
+            </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-          <StatCard label="Total pedidos" value={String(stats.total)} />
-          <StatCard label="Leads WhatsApp" value={String(stats.leads)} accent />
-          <StatCard label="Pagados / activos" value={String(stats.paid)} />
-          <StatCard label="Ingresos" value={`$${stats.revenue.toFixed(2)}`} />
-        </div>
+        {dataLoading && (
+          <p className="text-center text-gray-400 mb-4">Cargando...</p>
+        )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <h2 className="text-xl font-bold">
-            Pedidos ({filtered.length}{filterStatus !== "all" || search ? ` de ${orders.length}` : ""})
-          </h2>
-          <input
-            type="text"
-            placeholder="Buscar orden, nombre, telefono, notas..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="px-4 py-2.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-sm w-full sm:w-80"
-          />
-        </div>
+        {tab === "meals" && (
+          <div className="grid lg:grid-cols-5 gap-8">
+            {/* Formulario */}
+            <div className="lg:col-span-2">
+              <form
+                onSubmit={saveMeal}
+                className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4 sticky top-24"
+              >
+                <h2 className="font-bold text-lg">
+                  {editingId ? "Editar plato" : "Agregar plato nuevo"}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Publica cuando tengas comida lista o sobras para vender rapido.
+                </p>
 
-        <div className="flex flex-wrap gap-2 mb-6">
-          <FilterChip active={filterStatus === "all"} onClick={() => setFilterStatus("all")} label={`Todos (${counts.all})`} />
-          {ALL_STATUSES.map((s) => (
-            <FilterChip key={s} active={filterStatus === s} onClick={() => setFilterStatus(s)} label={`${STATUS_LABELS[s]} (${counts[s] || 0})`} />
-          ))}
-        </div>
-
-        {ordersLoading ? (
-          <div className="text-center py-20 text-gray-400">Cargando...</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">No hay pedidos con estos filtros.</div>
-        ) : (
-          <div className="space-y-4">
-            {filtered.map((order) => {
-              const daysLabel = DAYS_OPTIONS.find((d) => d.id === order.plan.days)?.label || order.plan.days;
-              const prefLabel = PREFERENCE_OPTIONS.find((p) => p.id === order.plan.preference)?.label || order.plan.preference;
-              const mealNames = (order.plan.meals || []).map((id) => MEALS.find((m) => m.id === id)?.name || id).join(", ");
-              const waMsg = `Hola ${order.customer.name}, te escribo de Ready pa' la semana sobre tu orden ${order.orderNumber}.`;
-
-              return (
-                <div key={order.id} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-                    <div>
-                      <div className="font-mono text-sm font-semibold text-gray-800">{order.orderNumber}</div>
-                      <div className="font-semibold text-lg">{order.customer.name}</div>
-                      <div className="text-sm text-gray-500">{order.customer.email} · {order.customer.phone}</div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        Origen: {order.source || "—"} · {new Date(order.createdAt).toLocaleString("es-US")}
-                      </div>
-                    </div>
-                    <span className={clsx("text-xs font-medium px-3 py-1 rounded-full", STATUS_COLORS[order.status])}>
-                      {STATUS_LABELS[order.status]}
-                    </span>
+                {formError && (
+                  <div className="bg-red-50 text-red-700 text-sm p-3 rounded-xl">
+                    {formError}
                   </div>
+                )}
 
-                  <div className="grid sm:grid-cols-2 gap-2 text-sm mb-3">
-                    <div><span className="text-gray-400">Direccion:</span> {order.customer.address}, {order.customer.city} {order.customer.zip}</div>
-                    <div><span className="text-gray-400">Plan:</span> {daysLabel} · {prefLabel} · {order.plan.people} pers.</div>
-                    <div className="sm:col-span-2"><span className="text-gray-400">Comidas:</span> {mealNames || "—"}</div>
-                    <div><span className="text-gray-400">Total:</span> <strong>${order.pricing.total.toFixed(2)}</strong></div>
-                    <div>
-                      <span className="text-gray-400">Seguimiento:</span>{" "}
-                      <a className="text-blue-600 underline" href={`/seguimiento?n=${order.orderNumber}`} target="_blank" rel="noreferrer">
-                        Abrir
-                      </a>
-                    </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nombre</label>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="Ej: Pollo guisado con arroz"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-brand-600 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Ingredientes / descripcion
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={form.description}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, description: e.target.value }))
+                    }
+                    placeholder="Pollo, arroz, habichuelas, cilantro..."
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-brand-600 focus:outline-none text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Precio ($)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.price}
+                      onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-brand-600 focus:outline-none"
+                    />
                   </div>
-
-                  {/* Notas */}
-                  <div className="mb-3">
-                    <label className="text-xs text-gray-400">Notas internas</label>
-                    <div className="flex gap-2 mt-1">
-                      <input
-                        type="text"
-                        value={noteDrafts[order.id || ""] || ""}
-                        onChange={(e) => setNoteDrafts((d) => ({ ...d, [order.id || ""]: e.target.value }))}
-                        placeholder="Ej: cliente prefiere entrega martes..."
-                        className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-black"
-                      />
-                      <button onClick={() => order.id && saveNotes(order.id)} className="text-xs px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
-                        Guardar
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {ALL_STATUSES.filter((s) => s !== order.status).map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => order.id && changeStatus(order.id, s)}
-                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
-                      >
-                        → {STATUS_LABELS[s]}
-                      </button>
-                    ))}
-                    <a
-                      href={buildWhatsAppUrl(waMsg)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs px-3 py-1.5 rounded-lg border border-green-600 text-green-700 hover:bg-green-50"
-                    >
-                      WhatsApp cliente
-                    </a>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(order.orderNumber);
-                      }}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
-                    >
-                      Copiar # orden
-                    </button>
-                    <button
-                      onClick={() => order.id && handleDelete(order.id)}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
-                    >
-                      Eliminar
-                    </button>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Stock</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={form.stock}
+                      onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-brand-600 focus:outline-none"
+                    />
                   </div>
                 </div>
-              );
-            })}
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Imagen</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImage(e.target.files?.[0] || null)}
+                    className="w-full text-sm"
+                  />
+                  {uploading && (
+                    <p className="text-xs text-brand-700 mt-1">Subiendo imagen...</p>
+                  )}
+                  {form.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={form.imageUrl}
+                      alt="Preview"
+                      className="mt-2 h-28 w-full object-cover rounded-lg"
+                    />
+                  )}
+                  <input
+                    type="url"
+                    placeholder="O pega una URL de imagen"
+                    value={form.imageUrl}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, imageUrl: e.target.value }))
+                    }
+                    className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-200 focus:border-brand-600 focus:outline-none text-sm"
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.available}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, available: e.target.checked }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  Publicado / disponible hoy
+                </label>
+
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={saving || uploading}
+                    className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {saving ? "Guardando..." : editingId ? "Actualizar" : "Publicar plato"}
+                  </button>
+                  {editingId && (
+                    <button
+                      type="button"
+                      onClick={resetForm}
+                      className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm"
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Lista platos */}
+            <div className="lg:col-span-3 space-y-3">
+              <h2 className="font-bold text-lg mb-2">
+                Tus platos ({meals.length})
+              </h2>
+              {meals.length === 0 ? (
+                <p className="text-gray-400 py-10 text-center">
+                  Aun no hay platos. Agrega el primero a la izquierda.
+                </p>
+              ) : (
+                meals.map((meal) => (
+                  <div
+                    key={meal.id}
+                    className="bg-white rounded-xl border border-gray-100 p-4 flex gap-4 shadow-sm"
+                  >
+                    <div className="w-20 h-20 rounded-lg bg-gray-100 overflow-hidden shrink-0">
+                      {meal.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={meal.imageUrl}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl">
+                          🍽️
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="font-semibold">{meal.name}</div>
+                          <div className="text-sm text-gray-500 line-clamp-1">
+                            {meal.description}
+                          </div>
+                        </div>
+                        <div className="font-bold text-brand-700">
+                          ${meal.price.toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+                        <span
+                          className={clsx(
+                            "px-2 py-0.5 rounded-full",
+                            meal.available
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-600"
+                          )}
+                        >
+                          {meal.available ? "Publicado" : "Oculto"}
+                        </span>
+                        <span className="text-gray-500">Stock: {meal.stock}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <button
+                          onClick={() => startEdit(meal)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => toggleAvailable(meal)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
+                        >
+                          {meal.available ? "Ocultar hoy" : "Publicar hoy"}
+                        </button>
+                        <button
+                          onClick={() => meal.id && removeMeal(meal.id)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === "orders" && (
+          <div>
+            <div className="flex flex-col sm:flex-row gap-3 mb-6">
+              <input
+                type="text"
+                placeholder="Buscar orden, nombre, email, especial..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="flex-1 px-4 py-2.5 rounded-xl border-2 border-gray-200 focus:border-brand-600 focus:outline-none text-sm"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 mb-6">
+              {(["all", "pending", "paid", "preparing", "ready", "delivered", "cancelled"] as const).map(
+                (s) => (
+                  <button
+                    key={s}
+                    onClick={() => setFilterStatus(s)}
+                    className={clsx(
+                      "text-xs px-3 py-1.5 rounded-full border",
+                      filterStatus === s
+                        ? "bg-brand-600 text-white border-brand-600"
+                        : "border-gray-200 hover:bg-gray-50"
+                    )}
+                  >
+                    {s === "all" ? "Todos" : STATUS_LABELS[s]}
+                  </button>
+                )
+              )}
+            </div>
+
+            {filteredOrders.length === 0 ? (
+              <p className="text-center text-gray-400 py-16">No hay pedidos.</p>
+            ) : (
+              <div className="space-y-4">
+                {filteredOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm"
+                  >
+                    <div className="flex flex-wrap justify-between gap-2 mb-3">
+                      <div>
+                        <div className="font-mono text-sm text-brand-700 font-semibold">
+                          {order.orderNumber}
+                        </div>
+                        <div className="font-semibold text-lg">{order.customer.name}</div>
+                        <div className="text-sm text-gray-500">
+                          {order.customer.email} · {order.customer.phone}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <span
+                          className={clsx(
+                            "text-xs font-medium px-3 py-1 rounded-full",
+                            STATUS_COLORS[order.status]
+                          )}
+                        >
+                          {STATUS_LABELS[order.status]}
+                        </span>
+                        {order.type === "special" && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-800">
+                            Especial
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-sm space-y-1 mb-3">
+                      <div>
+                        <span className="text-gray-400">Direccion:</span>{" "}
+                        {order.customer.address}, {order.customer.city}{" "}
+                        {order.customer.zip}
+                      </div>
+                      {order.deliveryDate && (
+                        <div>
+                          <span className="text-gray-400">Entrega:</span>{" "}
+                          {order.deliveryDate}
+                        </div>
+                      )}
+                      {order.specialRequest && (
+                        <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 mt-2">
+                          <span className="text-orange-800 font-medium">Pedido especial:</span>{" "}
+                          {order.specialRequest}
+                        </div>
+                      )}
+                      {order.items?.length > 0 && (
+                        <div>
+                          <span className="text-gray-400">Items:</span>{" "}
+                          {order.items
+                            .map((i) => `${i.qty}x ${i.name}`)
+                            .join(", ")}
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-gray-400">Total:</span>{" "}
+                        <strong className="text-brand-700">
+                          ${order.pricing?.total?.toFixed(2) ?? "0.00"}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {(["paid", "preparing", "ready", "delivered", "cancelled"] as const).map(
+                        (s) => (
+                          <button
+                            key={s}
+                            onClick={() => order.id && changeStatus(order.id, s)}
+                            disabled={order.status === s}
+                            className={clsx(
+                              "text-xs px-3 py-1.5 rounded-lg border",
+                              order.status === s
+                                ? "bg-brand-600 text-white border-brand-600"
+                                : "border-gray-200 hover:bg-gray-50"
+                            )}
+                          >
+                            {STATUS_LABELS[s]}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
-
-      {/* Modal crear orden manual */}
-      {showCreate && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <form onSubmit={handleCreateManual} className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-bold">Nueva orden / lead manual</h3>
-            <p className="text-sm text-gray-500">Genera numero de seguimiento para cerrar por WhatsApp o telefono.</p>
-            <input required placeholder="Nombre *" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-sm" />
-            <input required placeholder="Telefono *" value={manual.phone} onChange={(e) => setManual({ ...manual, phone: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-sm" />
-            <input placeholder="Email" value={manual.email} onChange={(e) => setManual({ ...manual, email: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-sm" />
-            <input placeholder="Direccion" value={manual.address} onChange={(e) => setManual({ ...manual, address: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-sm" />
-            <div className="grid grid-cols-2 gap-2">
-              <input placeholder="Ciudad" value={manual.city} onChange={(e) => setManual({ ...manual, city: e.target.value })} className="px-3 py-2.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-sm" />
-              <input placeholder="ZIP" value={manual.zip} onChange={(e) => setManual({ ...manual, zip: e.target.value })} className="px-3 py-2.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-sm" />
-            </div>
-            <select value={manual.days} onChange={(e) => setManual({ ...manual, days: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-sm">
-              {DAYS_OPTIONS.map((d) => (
-                <option key={d.id} value={d.id}>{d.label}</option>
-              ))}
-            </select>
-            <textarea placeholder="Notas" value={manual.notes} onChange={(e) => setManual({ ...manual, notes: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border-2 border-gray-200 focus:border-black focus:outline-none text-sm" rows={2} />
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setShowCreate(false)} className="flex-1 py-3 rounded-xl border-2 border-gray-200">Cancelar</button>
-              <button type="submit" disabled={creating} className="flex-1 py-3 rounded-xl bg-black text-white hover:bg-gray-800 disabled:opacity-50">
-                {creating ? "Creando..." : "Crear + generar #"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
     </div>
-  );
-}
-
-function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className={clsx("rounded-2xl p-4 border", accent ? "bg-emerald-50 border-emerald-100" : "bg-white border-gray-100")}>
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-2xl font-bold mt-1">{value}</div>
-    </div>
-  );
-}
-
-function FilterChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={clsx(
-        "text-xs px-3 py-1.5 rounded-full border transition-colors",
-        active ? "bg-black text-white border-black" : "border-gray-200 hover:bg-gray-50"
-      )}
-    >
-      {label}
-    </button>
   );
 }
